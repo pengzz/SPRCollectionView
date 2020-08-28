@@ -67,7 +67,8 @@ static NSString * const cellIden = @"CollectionViewCell";
         _collectionView.backgroundColor = [UIColor whiteColor];
         _collectionView.delegate = self;
         _collectionView.dataSource = self;
-        _collectionView.contentInset = UIEdgeInsetsMake(44, 10, 10, 20);
+        //_collectionView.contentInset = UIEdgeInsetsMake(44, 10, 10, 20);
+        _collectionView.contentInset = UIEdgeInsetsMake(44, 10, 10, 10);
         [_collectionView registerNib:[UINib nibWithNibName:@"CollectionViewCell" bundle:nil] forCellWithReuseIdentifier:cellIden];
     }
     return _collectionView;

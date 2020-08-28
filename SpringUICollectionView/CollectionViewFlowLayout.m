@@ -73,7 +73,8 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
 - (CGSize)collectionViewContentSize {
     UIEdgeInsets inset = self.collectionView.contentInset;
     NSInteger items = [self.collectionView numberOfItemsInSection:0];
-    CGSize size = CGSizeMake(self.collectionView.frame.size.width - inset.left - inset.right, (items - 1) * kCellSpace + kCellHeight- inset.bottom);
+//    CGSize size = CGSizeMake(self.itemSize.width, (items - 1) * kCellSpace + kCellHeight- inset.bottom);
+    CGSize size = CGSizeMake(self.itemSize.width, (items - 1) * kCellSpace + kCellHeight+ inset.bottom);
     return size;
 }
 
@@ -96,15 +97,15 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
         if (row * kCellSpace >= offsetY - kCellSpace) {
             NSIndexPath *indexPath = [NSIndexPath indexPathForItem:row inSection:0];
             UICollectionViewLayoutAttributes *att = [UICollectionViewLayoutAttributes layoutAttributesForCellWithIndexPath:indexPath];
-            CGRect cellRect = CGRectMake(0, MAX(offsetY, row * kCellSpace), kCollectionViewWidth - inset.right, kCellHeight);
+            CGRect cellRect = CGRectMake(0, MAX(offsetY, row * kCellSpace), self.itemSize.width, kCellHeight);
             CGFloat left = (4 - shrinkCellIndex) * 5;
             CGFloat top = shrinkCellIndex * kExpandBottomCellSpace + kExpandBottomFirstCellMarginOfTop;
             if (self.isExpand) {
                 if (indexPath.item == self.currentIndexPath.item) {
-                    cellRect = CGRectMake(0, offsetY, kCollectionViewWidth - inset.right, kCollectionViewHeight - kExpandBottomHeight);
+                    cellRect = CGRectMake(0, offsetY, self.itemSize.width, kCollectionViewHeight - kExpandBottomHeight);
                     self.currentCellShrinkMarginLeft = left;
                 } else {
-                    cellRect = CGRectMake(left, offsetY + (kCollectionViewHeight - kExpandBottomHeight) + top, kCollectionViewWidth - inset.right - left * 2, kCellHeight);
+                    cellRect = CGRectMake(left, offsetY + (kCollectionViewHeight - kExpandBottomHeight) + top, self.itemSize.width - left * 2, kCellHeight);
                     shrinkCellIndex++;
                     shrinkCellIndex = MIN(shrinkCellIndex, 3);
                 }
@@ -113,12 +114,33 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
                     // 0.25是相对于offsetY的偏移比例,根据需要自行调节
                     cellRect.origin.y = att.indexPath.item * kCellSpace - fabs(offsetY + inset.top) + fabs(offsetY + inset.top) * att.indexPath.item * 0.25;
                 }
+                {// zz补充 to do
+                    // 从展开时的点击关闭，修改当前卡片高度
+                    if (indexPath.item == self.currentIndexPath.item &&
+                        self.collectionView.scrollEnabled == NO
+                        ) {
+                        cellRect.size.height = kCollectionViewHeight - kExpandBottomHeight;
+                    }
+                }
+            }
+            { // zz
+                CGFloat scale = (cellRect.size.width / self.itemSize.width);
+                att.transform3D = ({
+                    CATransform3D zTransform = CATransform3DMakeTranslation(0, 0, att.indexPath.item * 2);
+                    if (cellRect.size.width!=self.itemSize.width) {
+                        CATransform3D scaleTransform = CATransform3DMakeScale(scale, 1.0, 1.0);
+                        zTransform = CATransform3DConcat(scaleTransform, zTransform);
+                    }
+                    zTransform;
+                });
+                cellRect.origin.x = 0;
+                cellRect.size.width = self.itemSize.width; // 还原宽度因为下面会使用访射 //zz
             }
             att.frame = cellRect;
             att.center = CGPointMake(CGRectGetMinX(cellRect) + CGRectGetWidth(cellRect) / 2, CGRectGetMinY(cellRect) + CGRectGetHeight(cellRect) / 2);
             // 因为我们的cell有重叠,必须设置zIndex,否则复用时层级会有问题
             att.zIndex = att.indexPath.item * 2;
-            att.transform3D = CATransform3DMakeTranslation(0, 0, att.indexPath.item * 2);
+//            att.transform3D = CATransform3DMakeTranslation(0, 0, att.indexPath.item * 2); // zz用了上面的
             if (CGRectIntersectsRect(cellRect, rect) || CGRectContainsRect(cellRect, rect)) {
                 [attrs addObject:att];
             }
@@ -233,7 +255,6 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
 
 - (void)collectionViewCell:(CollectionViewCell *)cell handlerPanGesture:(UIPanGestureRecognizer *)ges {
     CGFloat offsetY = self.collectionView.contentOffset.y;
-    UIEdgeInsets inset = self.collectionView.contentInset;
     switch (ges.state) {
         case UIGestureRecognizerStateBegan:
         {
@@ -252,8 +273,8 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
             CGRect frame = cell.frame;
             CGFloat pecent = (frame.origin.y - offsetY) / (kCollectionViewHeight - kExpandBottomHeight);
             CGFloat left = pecent * self.currentCellShrinkMarginLeft;
-            [cell setTransform:CGAffineTransformTranslate(cell.transform, 0, translate.y)];
-            frame = CGRectMake(left, frame.origin.y + translate.y, kCollectionViewWidth - inset.right - left * 2,kCollectionViewHeight - kExpandBottomHeight );
+//            [cell setTransform:CGAffineTransformTranslate(cell.transform, 0, translate.y)]; // zz 如果加这一句则下拖时层级不对？！
+            frame = CGRectMake(left, frame.origin.y + translate.y, self.itemSize.width - left * 2,kCollectionViewHeight - kExpandBottomHeight );
             cell.frame = frame;
             [ges setTranslation:CGPointZero inView:cell];
         }
@@ -262,14 +283,14 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
         case UIGestureRecognizerStateCancelled:
         case UIGestureRecognizerStateFailed:
         {
-            
-            if (cell.frame.origin.y > kCollectionViewHeight / 2 - kExpandBottomHeight / 2) {
+            //if (cell.frame.origin.y > kCollectionViewHeight / 2 - kExpandBottomHeight / 2) { // old
+            if ((cell.frame.origin.y - offsetY) > kCollectionViewHeight / 2 - kExpandBottomHeight / 2) {
                 // 结束
                 [self closeCell];
             } else {
                 // 复位
                 [UIView animateWithDuration:kComeUpAnimationDuration animations:^{
-                    cell.frame = CGRectMake(0, offsetY, kCollectionViewWidth - inset.right, kCollectionViewHeight - kExpandBottomHeight);
+                    cell.frame = CGRectMake(0, offsetY, self.itemSize.width, kCollectionViewHeight - kExpandBottomHeight);
                 }];
             }
         }
@@ -285,12 +306,22 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
 #pragma mark -- -- -- -- -- - Event Response - -- -- -- -- --
 - (void)displayLinkAction:(CADisplayLink *)link {
     // 滚倒底了已经
-    if (self.scrollType == CollectionViewAutoScrollUp && self.collectionView.contentOffset.y + self.collectionView.frame.size.height > self.collectionView.contentSize.height) {
+    if (self.scrollType == CollectionViewAutoScrollUp &&
+        self.collectionView.contentOffset.y + self.collectionView.frame.size.height
+        -self.collectionView.adjustedContentInset.bottom*1
+        >
+        self.collectionView.contentSize.height) {
         return;
     }
     
     // 滚到顶了
-    if (self.scrollType == CollectionViewAutoScrollDown && self.collectionView.contentOffset.y < 0) {
+//    if (self.scrollType == CollectionViewAutoScrollDown && self.collectionView.contentOffset.y < 0) {
+//        return;
+//    }
+    if (self.scrollType == CollectionViewAutoScrollDown &&
+        (self.collectionView.contentOffset.y+self.collectionView.contentInset.top) < 0
+        && self.currentIndexPath.item == 0 //还没交换到第一个item时
+        ) {
         return;
     }
     
@@ -300,11 +331,18 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
     
     CGFloat increaseValue;
     
+//    if (self.scrollType == CollectionViewAutoScrollUp) {
+//        // 让collectionView刚好可以滚到底
+//        increaseValue = MIN(kAutoScrollSpeed, self.collectionView.contentSize.height - self.collectionView.frame.size.height - self.collectionView.contentOffset.y);
+//    } else {
+//        increaseValue = MAX(-kAutoScrollSpeed, -self.collectionView.contentOffset.y);
+//    }
+    
     if (self.scrollType == CollectionViewAutoScrollUp) {
         // 让collectionView刚好可以滚到底
-        increaseValue = MIN(kAutoScrollSpeed, self.collectionView.contentSize.height - self.collectionView.frame.size.height - self.collectionView.contentOffset.y);
+        increaseValue = MIN(kAutoScrollSpeed, self.collectionView.contentSize.height - self.collectionView.frame.size.height - self.collectionView.contentOffset.y  +self.collectionView.adjustedContentInset.bottom*1);
     } else {
-        increaseValue = MAX(-kAutoScrollSpeed, -self.collectionView.contentOffset.y);
+        increaseValue = MAX(-kAutoScrollSpeed, -(self.collectionView.contentOffset.y+self.collectionView.contentInset.top)); // zz添加inset上去：否则当inset.top不为0时，滑动时它会滑动到offset.y为0的位置，而不是滚到最上面位置。
     }
     
     CGRect frame = self.shootImageView.frame;
@@ -330,19 +368,55 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
         BOOL shouldMove = NO;
         NSIndexPath *preferIndexPath;
         CollectionViewCell *preferCell;
-        preferIndexPath = [NSIndexPath indexPathForItem:self.currentIndexPath.item + 1 inSection:self.currentIndexPath.section];
-        preferCell = (CollectionViewCell *)[self.collectionView cellForItemAtIndexPath:preferIndexPath];
-
-        // 间距小于`kCanMoveDistance`开始交换
-        if (fabs(preferCell.frame.origin.y - self.shootImageView.frame.origin.y) < kCanMoveDistance) {
-            shouldMove = YES;
-        } else {
-            preferIndexPath = [NSIndexPath indexPathForItem:self.currentIndexPath.item - 1 inSection:self.currentIndexPath.section];
-            preferCell = (CollectionViewCell *)[self.collectionView cellForItemAtIndexPath:preferIndexPath];
-            if (fabs(preferCell.frame.origin.y - self.shootImageView.frame.origin.y) < kCanMoveDistance) {
-                shouldMove = YES;
-            } else {
+        {//old
+//            preferIndexPath = [NSIndexPath indexPathForItem:self.currentIndexPath.item + 1 inSection:self.currentIndexPath.section];
+//            preferCell = (CollectionViewCell *)[self.collectionView cellForItemAtIndexPath:preferIndexPath];
+//            // 间距小于`kCanMoveDistance`开始交换
+//            if (fabs(preferCell.frame.origin.y - self.shootImageView.frame.origin.y) < kCanMoveDistance) {
+//                shouldMove = YES;
+//            } else {
+//                preferIndexPath = [NSIndexPath indexPathForItem:self.currentIndexPath.item - 1 inSection:self.currentIndexPath.section];
+//                preferCell = (CollectionViewCell *)[self.collectionView cellForItemAtIndexPath:preferIndexPath];
+//                if (fabs(preferCell.frame.origin.y - self.shootImageView.frame.origin.y) < kCanMoveDistance) {
+//                    shouldMove = YES;
+//                } else {
+////                    return; // zz注掉
+//                }
+//            }
+        }
+        if (shouldMove==NO) {// zz 解决拉动图片太快时它不交换的问题！
+            NSInteger items = [self.collectionView numberOfItemsInSection:0];
+            //最上最下一个直接返回
+            if (self.currentIndexPath.item == 0 && self.currentIndexPath.item == items-1) {
                 return;
+            }
+            CollectionViewCell *currentCell = (CollectionViewCell *)[self.collectionView cellForItemAtIndexPath:self.currentIndexPath];
+            CGFloat countFloat = (self.shootImageView.frame.origin.y-currentCell.frame.origin.y) / (kCellSpace * 1.0);
+            if (fabs(countFloat) < 1.0+ (kCanMoveDistance*1.0)/(kCellSpace*1.0)) { // 小于上下各一个(最大)交换空间时
+                NSInteger count = (countFloat>0?+1:-1);
+                NSInteger targetIndex = self.currentIndexPath.item + count;
+                targetIndex = targetIndex < 0 ? 0 : targetIndex;
+                targetIndex = (targetIndex > items-1) ? (items-1) : targetIndex;
+                //
+                preferIndexPath = [NSIndexPath indexPathForItem:targetIndex inSection:self.currentIndexPath.section];
+                preferCell = (CollectionViewCell *)[self.collectionView cellForItemAtIndexPath:preferIndexPath];
+                if (fabs(preferCell.frame.origin.y - self.shootImageView.frame.origin.y) < kCanMoveDistance) {
+                    shouldMove = YES;
+                } else {
+                    return;
+                }
+            }
+            else { // 需要直接交换
+                NSInteger count = (int)countFloat;
+                count = fabs(countFloat-count) >= 0.5 ? count + (countFloat>0?+1:-1) : count;
+                //
+                NSInteger targetIndex = self.currentIndexPath.item + count;
+                targetIndex = targetIndex < 0 ? 0 : targetIndex;
+                targetIndex = (targetIndex > items-1) ? (items-1) : targetIndex;
+                //
+                preferIndexPath = [NSIndexPath indexPathForItem:targetIndex inSection:self.currentIndexPath.section];
+                preferCell = (CollectionViewCell *)[self.collectionView cellForItemAtIndexPath:preferIndexPath];
+                shouldMove = YES;
             }
         }
     
@@ -434,8 +508,26 @@ typedef NS_ENUM(NSInteger, CollectionViewAutoScrollType){
     // 结束
     UIEdgeInsets inset = self.collectionView.contentInset;
     [UIView animateWithDuration:kComeUpAnimationDuration animations:^{
-        self.currentCell.frame = CGRectMake(self.currentCellShrinkMarginLeft, kCollectionViewHeight, kCollectionViewWidth - inset.right - self.currentCellShrinkMarginLeft * 2, kCollectionViewHeight - kExpandBottomHeight);
-    }completion:^(BOOL finished) {
+        //X[self.currentCell setTransform:CGAffineTransformTranslate(self.currentCell.transform, 0, 0)]; // zz
+        // 下面直接修改frame的方式它会立即缩成目标大小不会动画过渡的？！
+        CGRect cellRect = CGRectMake(self.currentCellShrinkMarginLeft,
+//X                                            kCollectionViewHeight, // 这里面应该调整为相对位置的底部！
+                                     self.collectionView.contentOffset.y +kCollectionViewHeight,
+                                     self.itemSize.width - self.currentCellShrinkMarginLeft * 2,
+                                     kCollectionViewHeight - kExpandBottomHeight // 长
+//                                     kCellHeight // 短
+                                     );
+        cellRect.size.width = self.itemSize.width;
+        self.currentCell.frame = cellRect;
+        CGFloat scale = (self.itemSize.width - self.currentCellShrinkMarginLeft * 2) / self.itemSize.width;
+        if (@available(iOS 12.0, *)) {
+            CATransform3D scaleTransform = CATransform3DMakeScale(scale, 1.0, 1.0);
+            self.currentCell.transform3D = CATransform3DConcat(scaleTransform, self.currentCell.transform3D);
+        } else {
+            CGAffineTransform scaleTransform = CGAffineTransformMakeScale(scale, 1.0);
+            self.currentCell.transform = CGAffineTransformConcat(scaleTransform, self.currentCell.transform);
+        }
+    } completion:^(BOOL finished) {
         [self closeCellWithoutAnimation];
     }];
 }
